@@ -1,0 +1,5 @@
+paddlepaddle
+paddleocr
+paddlenlp
+opencv-python-headless
+Pillow
