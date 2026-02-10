@@ -27,7 +27,14 @@ def load_llm_model(model_path="./models/llm"):
     """
     print(f"Loading LLM from {model_path}...")
     try:
-        tokenizer = AutoTokenizer.from_pretrained(model_path)
+        # Try loading with AutoTokenizer
+        try:
+            tokenizer = AutoTokenizer.from_pretrained(model_path)
+        except Exception as e:
+            print(f"AutoTokenizer failed ({e}), attempting specific Qwen2Tokenizer import...")
+            from paddlenlp.transformers import Qwen2Tokenizer
+            tokenizer = Qwen2Tokenizer.from_pretrained(model_path)
+
         model = AutoModelForCausalLM.from_pretrained(model_path, dtype="float32")
         model.eval()
         return tokenizer, model

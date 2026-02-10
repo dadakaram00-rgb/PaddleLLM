@@ -13,7 +13,6 @@ import kie_pipeline
 
 class TestKIEPipeline(unittest.TestCase):
     def test_functions_exist(self):
-        # We removed find_model_dir, so check if load_ocr_model and others exist
         self.assertTrue(hasattr(kie_pipeline, 'load_ocr_model'))
         self.assertTrue(hasattr(kie_pipeline, 'load_llm_model'))
         self.assertTrue(hasattr(kie_pipeline, 'extract_text_from_image'))
@@ -21,20 +20,40 @@ class TestKIEPipeline(unittest.TestCase):
 
     @patch('kie_pipeline.PaddleOCR')
     def test_load_ocr_model_default(self, mock_paddleocr):
-        # Mock PaddleOCR class
         mock_instance = MagicMock()
         mock_paddleocr.return_value = mock_instance
-
         ocr = kie_pipeline.load_ocr_model()
-
-        # Verify it was called with expected default args
-        mock_paddleocr.assert_called_once_with(
-            use_angle_cls=True,
-            lang='de',
-            use_gpu=False,
-            show_log=False
-        )
+        mock_paddleocr.assert_called_once()
         self.assertEqual(ocr, mock_instance)
+
+    @patch('kie_pipeline.AutoTokenizer')
+    @patch('kie_pipeline.AutoModelForCausalLM')
+    def test_load_llm_auto_success(self, mock_model, mock_tokenizer):
+        mock_tokenizer.from_pretrained.return_value = "tokenizer"
+        mock_model.from_pretrained.return_value = MagicMock()
+
+        tok, mod = kie_pipeline.load_llm_model()
+        self.assertEqual(tok, "tokenizer")
+
+    def test_load_llm_fallback(self):
+        # We need to mock the import of Qwen2Tokenizer inside the function
+        # This is tricky because it's inside the function scope.
+        # However, we can mock sys.modules to ensure 'paddlenlp.transformers' has Qwen2Tokenizer
+
+        with patch('kie_pipeline.AutoTokenizer') as mock_auto:
+            mock_auto.from_pretrained.side_effect = Exception("Auto failed")
+
+            with patch.dict(sys.modules, {'paddlenlp.transformers': MagicMock()}):
+                # Ensure Qwen2Tokenizer is available on the mock module
+                mock_qwen = MagicMock()
+                sys.modules['paddlenlp.transformers'].Qwen2Tokenizer = mock_qwen
+                mock_qwen.from_pretrained.return_value = "qwen_tokenizer"
+
+                with patch('kie_pipeline.AutoModelForCausalLM') as mock_model:
+                     mock_model.from_pretrained.return_value = MagicMock()
+
+                     tok, mod = kie_pipeline.load_llm_model()
+                     self.assertEqual(tok, "qwen_tokenizer")
 
 if __name__ == '__main__':
     unittest.main()

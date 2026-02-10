@@ -17,7 +17,13 @@ def download_models():
         if not os.path.exists(llm_path):
             os.makedirs(llm_path)
 
-        tokenizer = AutoTokenizer.from_pretrained(llm_model_name)
+        try:
+            tokenizer = AutoTokenizer.from_pretrained(llm_model_name)
+        except Exception as e:
+            print(f"AutoTokenizer failed ({e}), attempting Qwen2Tokenizer...")
+            from paddlenlp.transformers import Qwen2Tokenizer
+            tokenizer = Qwen2Tokenizer.from_pretrained(llm_model_name)
+
         tokenizer.save_pretrained(llm_path)
 
         # Load model with float32 for broad CPU compatibility
