@@ -16,14 +16,15 @@ This project provides a solution for performing Key Information Extraction (KIE)
     pip install -r requirements.txt
     ```
 
-2.  **Download Models:**
-    Run the `download_models.py` script. This will download the necessary PaddleOCR models (specifically supporting German) and the Qwen2-0.5B LLM.
+2.  **Download LLM Model:**
+    Run the `download_models.py` script. This will download the Qwen2-0.5B LLM.
     ```bash
     python download_models.py
     ```
     This will create a `models/` directory containing:
-    - `models/ocr/`: PaddleOCR inference models.
     - `models/llm/`: The Qwen2-0.5B-Instruct model and tokenizer.
+
+    **Note:** This script does *not* download OCR models. It assumes you already have PaddleOCR models installed in the default location (e.g., `~/.paddleocr` or a custom `.paddelx` folder).
 
 3.  **Prepare for Transfer:**
     Copy the entire project directory (including the `models` folder and `requirements.txt`) to your offline machine.
@@ -41,7 +42,8 @@ This project provides a solution for performing Key Information Extraction (KIE)
     ```
 
     The script will:
-    - Load the OCR and LLM models from the local `models/` directory.
+    - Load the LLM model from the local `models/` directory.
+    - Load the OCR model from the system default location.
     - Perform OCR on the image to extract text.
     - Use the LLM to extract key fields (Contract Title, Date, Parties, Total Amount).
     - Print the extracted information in JSON format.
@@ -54,5 +56,5 @@ This project provides a solution for performing Key Information Extraction (KIE)
 
 ## Troubleshooting
 
-- **Model Not Found:** Ensure the `models` directory is in the same folder as `kie_pipeline.py` and contains the `ocr` and `llm` subdirectories.
+- **Model Not Found:** Ensure the `models` directory contains the `llm` subdirectory. For OCR errors, check that your default PaddleOCR models are correctly installed (e.g. in `~/.paddleocr`).
 - **Memory Issues:** The 0.5B model is very small, but if you encounter OOM errors, ensure no other heavy processes are running.

@@ -5,65 +5,21 @@ from paddleocr import PaddleOCR
 from paddlenlp.transformers import AutoModelForCausalLM, AutoTokenizer
 import json
 
-def find_model_dir(base_path, model_type, preferred_lang=None):
+def load_ocr_model():
     """
-    Recursively search for a directory containing specific model files
-    (inference.pdmodel) within the base path, filtering by model type keywords.
+    Load PaddleOCR using default system paths (e.g., ~/.paddleocr or configured default).
+    The user has specified that models are pre-installed in a default folder (e.g., .paddelx).
     """
-    candidates = []
-    for root, dirs, files in os.walk(base_path):
-        if "inference.pdmodel" in files:
-            # Check if path looks like the right model type
-            if model_type in root:
-                candidates.append(root)
+    print("Loading OCR models from default system location...")
 
-    if not candidates:
+    # Initialize PaddleOCR with standard parameters.
+    # It will look for models in ~/.paddleocr or PADDLEOCR_MODEL_DIR environment variable.
+    try:
+        ocr = PaddleOCR(use_angle_cls=True, lang='de', use_gpu=False, show_log=False)
+        return ocr
+    except Exception as e:
+        print(f"Error loading PaddleOCR: {e}")
         return None
-
-    # Filter by preferred language if specified
-    if preferred_lang:
-        for c in candidates:
-            if preferred_lang in c:
-                return c
-
-    # Fallback to the first candidate found if preference not met
-    return candidates[0]
-
-def load_ocr_model(models_dir="./models/ocr"):
-    """
-    Load PaddleOCR with models from local directory.
-    """
-    print("Loading OCR models from local storage...")
-
-    # We expect the models to be in ./models/ocr (which mimics ~/.paddleocr structure)
-    # Typically: ./models/ocr/whl/det/en/en_PP-OCRv3_det_infer
-
-    det_dir = find_model_dir(models_dir, "det")
-    # For recognition, prefer German ("de") models
-    rec_dir = find_model_dir(models_dir, "rec", preferred_lang="de")
-    cls_dir = find_model_dir(models_dir, "cls")
-
-    if not det_dir or not rec_dir or not cls_dir:
-        print(f"Warning: Could not find all OCR model directories in {models_dir}.")
-        print(f"Det: {det_dir}, Rec: {rec_dir}, Cls: {cls_dir}")
-        print("Attempting to use default PaddleOCR (might require internet if not found)...")
-        # Fallback to default, hoping it finds them in ~/.paddleocr if online or cached
-        return PaddleOCR(use_angle_cls=True, lang='de', use_gpu=False, show_log=False)
-
-    print(f"Using Det Model: {det_dir}")
-    print(f"Using Rec Model: {rec_dir}")
-    print(f"Using Cls Model: {cls_dir}")
-
-    ocr = PaddleOCR(
-        det_model_dir=det_dir,
-        rec_model_dir=rec_dir,
-        cls_model_dir=cls_dir,
-        use_angle_cls=True,
-        lang='de',
-        use_gpu=False,
-        show_log=False
-    )
-    return ocr
 
 def load_llm_model(model_path="./models/llm"):
     """

@@ -13,38 +13,28 @@ import kie_pipeline
 
 class TestKIEPipeline(unittest.TestCase):
     def test_functions_exist(self):
-        self.assertTrue(hasattr(kie_pipeline, 'find_model_dir'))
+        # We removed find_model_dir, so check if load_ocr_model and others exist
         self.assertTrue(hasattr(kie_pipeline, 'load_ocr_model'))
         self.assertTrue(hasattr(kie_pipeline, 'load_llm_model'))
         self.assertTrue(hasattr(kie_pipeline, 'extract_text_from_image'))
         self.assertTrue(hasattr(kie_pipeline, 'perform_kie'))
 
-    def test_find_model_dir(self):
-        with patch('os.walk') as mock_walk:
-            # Structure: (root, dirs, files)
-            # Create fake structure
-            mock_walk.return_value = [
-                ('/models', ['ocr'], []),
-                ('/models/ocr', ['whl'], []),
-                ('/models/ocr/whl', ['det', 'rec'], []),
-                ('/models/ocr/whl/det', ['en'], []),
-                ('/models/ocr/whl/det/en', [], ['inference.pdmodel']),
-                ('/models/ocr/whl/rec', ['de', 'en'], []),
-                ('/models/ocr/whl/rec/de', [], ['inference.pdmodel']),
-                ('/models/ocr/whl/rec/en', [], ['inference.pdmodel']),
-            ]
+    @patch('kie_pipeline.PaddleOCR')
+    def test_load_ocr_model_default(self, mock_paddleocr):
+        # Mock PaddleOCR class
+        mock_instance = MagicMock()
+        mock_paddleocr.return_value = mock_instance
 
-            # Test simple find
-            det = kie_pipeline.find_model_dir('/models', 'det')
-            self.assertEqual(det, '/models/ocr/whl/det/en')
+        ocr = kie_pipeline.load_ocr_model()
 
-            # Test preferred language
-            rec = kie_pipeline.find_model_dir('/models', 'rec', preferred_lang='de')
-            self.assertEqual(rec, '/models/ocr/whl/rec/de')
-
-            # Test missing
-            cls = kie_pipeline.find_model_dir('/models', 'cls')
-            self.assertIsNone(cls)
+        # Verify it was called with expected default args
+        mock_paddleocr.assert_called_once_with(
+            use_angle_cls=True,
+            lang='de',
+            use_gpu=False,
+            show_log=False
+        )
+        self.assertEqual(ocr, mock_instance)
 
 if __name__ == '__main__':
     unittest.main()
