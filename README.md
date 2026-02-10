@@ -58,3 +58,14 @@ This project provides a solution for performing Key Information Extraction (KIE)
 
 - **Model Not Found:** Ensure the `models` directory contains the `llm` subdirectory. For OCR errors, check that your default PaddleOCR models are correctly installed (e.g. in `~/.paddleocr`).
 - **Memory Issues:** The 0.5B model is very small, but if you encounter OOM errors, ensure no other heavy processes are running.
+
+## Training Your Own KIE Model
+
+If you prefer to train a dedicated Key Information Extraction model (e.g., LayoutXLM) instead of using the LLM approach, or if you want to fine-tune extraction on your specific contract data, please refer to the dedicated guide:
+
+[**KIE Training Guide (KIE_TRAINING_README.md)**](KIE_TRAINING_README.md)
+
+This guide covers:
+- Generating a synthetic dataset for German contracts.
+- Training a LayoutXLM model using PaddleOCR.
+- Exporting and running inference with the trained model.

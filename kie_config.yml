@@ -1,0 +1,129 @@
+Global:
+  use_gpu: False
+  epoch_num: 20
+  log_smooth_window: 10
+  print_batch_step: 2
+  save_model_dir: ./output/kie_ser_layoutxlm/
+  save_epoch_step: 20
+  eval_batch_step: [0, 10]
+  cal_metric_during_train: True
+  checkpoints:
+  pretrained_model:
+  load_static_weights: False
+  infer_img:
+  save_inference_dir:
+  distributed: False
+  seed: 2022
+  character_dict_path:
+
+Architecture:
+  model_type: kie
+  algorithm: LayoutXLM
+  Transform:
+  Backbone:
+    name: LayoutXLMForSer
+    pretrained: True
+    mode: vi
+    checkpoints:
+    num_classes: 9 # (Num Entities * 2) + 1. Entities: TITLE, DATE, PARTY, AMOUNT.
+
+Loss:
+  name: VQASerTokenLayoutLMLoss
+  num_classes: 9
+  key: "backbone_out"
+
+Optimizer:
+  name: AdamW
+  beta1: 0.9
+  beta2: 0.999
+  lr:
+    name: Linear
+    learning_rate: 0.00005
+    warmup_epoch: 2
+  regularizer:
+    name: L2
+    factor: 0.00001
+  clip_norm: 5.0
+
+PostProcess:
+  name: VQASerTokenLayoutLMPostProcess
+  class_path: ./train_data/class_list.txt
+
+Metric:
+  name: VQASerTokenMetric
+  main_indicator: hmean
+
+Train:
+  dataset:
+    name: SimpleDataSet
+    data_dir: ./train_data
+    label_file_list:
+      - ./train_data/train.txt
+    ratio_list: [1.0]
+    transforms:
+      - DecodeImage:
+          img_mode: RGB
+          channel_first: False
+      - VQATokenLabelEncode:
+          contains_re: False
+          algorithm: LayoutXLM
+          class_path: ./train_data/class_list.txt
+          use_textline_bbox_info: True
+          order_method: tb-yx
+      - VQATokenPad:
+          max_seq_len: 512
+          return_attention_mask: True
+      - VQASerTokenChunk:
+          max_seq_len: 512
+      - Resize:
+          size: [224, 224]
+      - NormalizeImage:
+          scale: 1
+          mean: [ 123.675, 116.28, 103.53 ]
+          std: [ 58.395, 57.12, 57.375 ]
+          order: 'hwc'
+      - ToCHWImage:
+      - KeepKeys:
+          keep_keys: [ 'input_ids', 'bbox', 'attention_mask', 'token_type_ids', 'image', 'labels']
+  loader:
+    shuffle: True
+    drop_last: False
+    batch_size_per_card: 4
+    num_workers: 0
+
+Eval:
+  dataset:
+    name: SimpleDataSet
+    data_dir: ./train_data
+    label_file_list:
+      - ./train_data/test.txt
+    transforms:
+      - DecodeImage:
+          img_mode: RGB
+          channel_first: False
+      - VQATokenLabelEncode:
+          contains_re: False
+          algorithm: LayoutXLM
+          class_path: ./train_data/class_list.txt
+          use_textline_bbox_info: True
+          order_method: tb-yx
+      - VQATokenPad:
+          max_seq_len: 512
+          return_attention_mask: True
+      - VQASerTokenChunk:
+          max_seq_len: 512
+      - Resize:
+          size: [224, 224]
+      - NormalizeImage:
+          scale: 1
+          mean: [ 123.675, 116.28, 103.53 ]
+          std: [ 58.395, 57.12, 57.375 ]
+          order: 'hwc'
+      - ToCHWImage:
+      - KeepKeys:
+          keep_keys: [ 'input_ids', 'bbox', 'attention_mask', 'token_type_ids', 'image', 'labels']
+  loader:
+    shuffle: False
+    drop_last: False
+    batch_size_per_card: 4
+    num_workers: 0
