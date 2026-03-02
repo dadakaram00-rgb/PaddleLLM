@@ -1,60 +1,63 @@
-# Offline KIE Pipeline with PaddleOCR and LLM
+# Offline KIE Pipeline with PaddleOCR and Transformers
 
-This project provides a solution for performing Key Information Extraction (KIE) on scanned German contracts using a small LLM (Qwen2-0.5B-Instruct) and PaddleOCR, entirely on CPU and offline.
+This project provides a solution for performing Key Information Extraction (KIE) on scanned German contracts using ErnieLayout and PaddleOCR, entirely on CPU and offline.
 
-## Prerequisites
+## Project Structure
 
-- Python 3.8+
-- [PaddlePaddle](https://www.paddlepaddle.org.cn/en) installed.
+- `download_models.py`: Run on an **online machine** to download base models.
+- `generate_synthetic_data.py`: Creates a synthetic dataset of German contracts for training.
+- `train_kie.py`: Fine-tunes ErnieLayout for extraction (Offline & 5GB RAM optimized).
+- `infer_pdf.py`: Extracts key-value pairs from a PDF (Offline compatible).
+- `data_structure.md`: Documentation on the training data format.
 
-## Setup Instructions
+## Offline Workflow
 
-### Phase 1: Online Setup (On a machine with internet access)
+### Phase 1: Online Setup (Internet Required)
 
 1.  **Install Dependencies:**
     ```bash
     pip install -r requirements.txt
     ```
 
-2.  **Download LLM Model:**
-    Run the `download_models.py` script. This will download the Qwen2-0.5B LLM.
+2.  **Download Base Models:**
     ```bash
     python download_models.py
     ```
-    This will create a `models/` directory containing:
-    - `models/llm/`: The Qwen2-0.5B-Instruct model and tokenizer.
+    Creates:
+    - `models/llm/`: Qwen2-0.5B-Instruct
+    - `models/base_models/ernie-layoutx-base-uncased/`: ErnieLayout Base
 
-    **Note:** This script does *not* download OCR models. It assumes you already have PaddleOCR models installed in the default location (e.g., `~/.paddleocr` or a custom `.paddelx` folder).
+3.  **Transfer:** Copy the project to the offline machine.
 
-3.  **Prepare for Transfer:**
-    Copy the entire project directory (including the `models` folder and `requirements.txt`) to your offline machine.
+### Phase 2: Offline Usage
 
-### Phase 2: Offline Usage (On the target offline machine)
-
-1.  **Install Dependencies:**
-    Ensure Python and PaddlePaddle are installed.
-    If you haven't installed the python packages yet, you can use the `requirements.txt`. Note that since the machine is offline, you might need to have pre-downloaded the wheel files (`.whl`) for `paddlepaddle`, `paddleocr`, `paddlenlp`, `opencv-python-headless`, and `Pillow`.
-
-2.  **Run the KIE Pipeline:**
-    Use the `kie_pipeline.py` script to process an image.
+1.  **Generate Data:**
     ```bash
-    python kie_pipeline.py path/to/your/contract_image.jpg
+    python generate_synthetic_data.py
     ```
 
-    The script will:
-    - Load the LLM model from the local `models/` directory.
-    - Load the OCR model from the system default location.
-    - Perform OCR on the image to extract text.
-    - Use the LLM to extract key fields (Contract Title, Date, Parties, Total Amount).
-    - Print the extracted information in JSON format.
+2.  **Fine-tune (CPU):**
+    ```bash
+    python train_kie.py
+    ```
+    - Loads: `./models/base_models/ernie-layoutx-base-uncased`
+    - Saves: `./models/fine_tuned/ernie_layout_kie`
+    - Optimized for **5GB RAM** using SGD optimizer.
 
-## Configuration
+3.  **PDF Inference:**
+    ```bash
+    python infer_pdf.py path/to/document.pdf
+    ```
+    - Loads: `./models/fine_tuned/ernie_layout_kie`
+    - Outputs: `TITLE`, `DATE`, `PARTY`, `AMOUNT`.
 
-- **Models:** The pipeline uses `Qwen/Qwen2-0.5B-Instruct` for KIE and standard `PP-OCRv3` (or v4) models for OCR.
-- **Language:** The OCR is configured to prefer German (`lang='de'`) models.
-- **Hardware:** The script explicitly sets `paddle.set_device("cpu")` to run efficiently on CPU.
+## Local Model Paths
 
-## Troubleshooting
+- **Base Model:** `./models/base_models/ernie-layoutx-base-uncased`
+- **Fine-tuned Model:** `./models/fine_tuned/ernie_layout_kie`
+- **OCR Models:** Default system location (e.g., `.paddelx`).
 
-- **Model Not Found:** Ensure the `models` directory contains the `llm` subdirectory. For OCR errors, check that your default PaddleOCR models are correctly installed (e.g. in `~/.paddleocr`).
-- **Memory Issues:** The 0.5B model is very small, but if you encounter OOM errors, ensure no other heavy processes are running.
+## Hardware Requirements
+
+- **CPU Only.**
+- **Memory:** Optimized for **5GB RAM** (Batch Size 1, SGD Optimizer).
