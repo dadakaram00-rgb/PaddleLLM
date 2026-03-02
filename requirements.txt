@@ -3,3 +3,4 @@ paddleocr
 paddlenlp>=3.0.0b2
 opencv-python-headless
 Pillow
+pypdfium2

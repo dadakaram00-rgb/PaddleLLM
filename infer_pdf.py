@@ -4,24 +4,54 @@ import paddle
 import pypdfium2 as pdfium
 from PIL import Image
 from paddleocr import PaddleOCR
-from paddlenlp.transformers import LayoutXLMForTokenClassification, LayoutXLMTokenizer
+from paddlenlp.transformers import ErnieLayoutForTokenClassification, ErnieLayoutTokenizer
 import numpy as np
 
-# Label mapping (same as training)
+# OFFLINE PATHS: Ensure these exist on your offline PC
+FINE_TUNED_MODEL_PATH = "./models/fine_tuned/ernie_layout_kie"
+BASE_MODEL_PATH = "./models/base_models/ernie-layoutx-base-uncased"
+
+# PADDLEOCR OFFLINE MODELS (Download and place these in ./models/ocr/)
+DET_MODEL_DIR = "./models/ocr/ch_PP-OCRv3_det_infer"
+REC_MODEL_DIR = "./models/ocr/ch_PP-OCRv3_rec_infer"
+CLS_MODEL_DIR = "./models/ocr/ch_ppocr_mobile_v2.0_cls_infer"
+
+# Label mapping
 ID2LABEL = {0: "O", 1: "TITLE", 2: "TITLE", 3: "DATE", 4: "PARTY", 5: "AMOUNT"}
 
-def load_models(model_path="models/layoutxlm_kie"):
+def load_models():
     paddle.set_device("cpu")
-    try:
-        tokenizer = LayoutXLMTokenizer.from_pretrained(model_path)
-        model = LayoutXLMForTokenClassification.from_pretrained(model_path)
-    except:
-        print(f"Custom model not found at {model_path}. Using base model for demo.")
-        tokenizer = LayoutXLMTokenizer.from_pretrained("microsoft/layoutxlm-base")
-        model = LayoutXLMForTokenClassification.from_pretrained("microsoft/layoutxlm-base", num_labels=6)
 
+    model_to_load = FINE_TUNED_MODEL_PATH
+    if not os.path.exists(model_to_load):
+        print(f"Warning: Fine-tuned model not found at {model_to_load}. Falling back to base model at {BASE_MODEL_PATH}")
+        model_to_load = BASE_MODEL_PATH
+
+    if not os.path.exists(model_to_load):
+        raise FileNotFoundError(f"No model found at {model_to_load}. Run download_models.py first.")
+
+    print(f"Loading ErnieLayout model from: {model_to_load}")
+    tokenizer = ErnieLayoutTokenizer.from_pretrained(model_to_load)
+    model = ErnieLayoutForTokenClassification.from_pretrained(model_to_load)
     model.eval()
-    ocr = PaddleOCR(use_angle_cls=True, lang='de', use_gpu=False, show_log=False)
+
+    # Initialize PaddleOCR with explicit local model paths for total offline usage
+    print("Initializing PaddleOCR with local model paths...")
+    # Check if local OCR models exist, otherwise fallback to system default (which assumes pre-installed)
+    if os.path.exists(DET_MODEL_DIR):
+        ocr = PaddleOCR(
+            det_model_dir=DET_MODEL_DIR,
+            rec_model_dir=REC_MODEL_DIR,
+            cls_model_dir=CLS_MODEL_DIR,
+            use_angle_cls=True,
+            lang='de',
+            use_gpu=False,
+            show_log=False
+        )
+    else:
+        print(f"Local OCR models not found at {DET_MODEL_DIR}. Falling back to default system location (e.g., ~/.paddleocr).")
+        ocr = PaddleOCR(use_angle_cls=True, lang='de', use_gpu=False, show_log=False)
+
     return tokenizer, model, ocr
 
 def pdf_to_image(pdf_path, page_index=0):
@@ -44,12 +74,14 @@ def process_document(pdf_path, tokenizer, model, ocr):
     image = pdf_to_image(pdf_path)
     w, h = image.size
 
-    # OCR
     img_array = np.array(image)
     ocr_result = ocr.ocr(img_array, cls=True)
 
     words = []
     bboxes = []
+
+    if not ocr_result or not ocr_result[0]:
+        return {}
 
     for line in ocr_result[0]:
         text = line[1][0]
@@ -61,15 +93,11 @@ def process_document(pdf_path, tokenizer, model, ocr):
     vision_image = np.array(vision_image).transpose(2, 0, 1).astype("float32") / 255.0
     vision_image = paddle.to_tensor([vision_image])
 
-    # Model Inference
     inputs = tokenizer(
         words,
         bbox=bboxes,
         return_tensors="pd"
     )
-
-    # Extract word_ids to map predictions back to OCR words
-    word_ids = inputs.word_ids()
 
     with paddle.no_grad():
         outputs = model(
@@ -81,39 +109,51 @@ def process_document(pdf_path, tokenizer, model, ocr):
     logits = outputs[0] if isinstance(outputs, tuple) else outputs
     predictions = paddle.argmax(logits, axis=-1).numpy()[0]
 
-    # Map token-level predictions back to words
+    # Manual prediction-to-word alignment
     extracted_data = {}
-    last_word_idx = None
+    current_token_idx = 1 # Skip [CLS]
 
-    for pred_idx, word_idx in zip(predictions, word_ids):
-        if word_idx is None or word_idx == last_word_idx:
-            # Skip special tokens or subsequent sub-tokens of the same word
-            continue
+    for i, word in enumerate(words):
+        word_tokens = tokenizer.tokenize(word)
+        if current_token_idx < 512:
+            pred_idx = predictions[current_token_idx]
+            label = ID2LABEL.get(pred_idx, "O")
 
-        last_word_idx = word_idx
-        label = ID2LABEL.get(pred_idx, "O")
-        if label != "O":
-            if label not in extracted_data:
-                extracted_data[label] = []
-            extracted_data[label].append(words[word_idx])
+            if label != "O":
+                if label not in extracted_data:
+                    extracted_data[label] = []
+                extracted_data[label].append(word)
 
-    # Format the list of words into strings
+            current_token_idx += len(word_tokens)
+        else:
+            break
+
     for label in extracted_data:
         extracted_data[label] = " ".join(extracted_data[label])
 
     return extracted_data
 
 def main():
-    parser = argparse.ArgumentParser(description="PDF KIE Inference using LayoutXLM")
+    parser = argparse.ArgumentParser(description="Offline PDF KIE Inference")
     parser.add_argument("pdf_path", help="Path to the PDF document")
     args = parser.parse_args()
 
-    tokenizer, model, ocr = load_models()
-    results = process_document(args.pdf_path, tokenizer, model, ocr)
+    if not os.path.exists(args.pdf_path):
+        print(f"Error: PDF not found at {args.pdf_path}")
+        return
 
-    print("\n--- Extracted Values ---")
-    for key, val in results.items():
-        print(f"{key}: {val}")
+    try:
+        tokenizer, model, ocr = load_models()
+        results = process_document(args.pdf_path, tokenizer, model, ocr)
+
+        print("\n--- Extracted Values ---")
+        if results:
+            for key, val in results.items():
+                print(f"{key}: {val}")
+        else:
+            print("No key information extracted.")
+    except Exception as e:
+        print(f"Error: {e}")
 
 if __name__ == "__main__":
     main()
